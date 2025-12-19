@@ -1,6 +1,8 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import numpy as np
+import os
 
 class DataCleaner:
     """
@@ -45,8 +47,73 @@ class DataCleaner:
         self.df["CustomerID"] = (
             self.df["CustomerID"]
             .astype(str)
-            .str.replace(".0",)
+            .str.replace(".0", "", regex=False)
+            .str.zfill(6)
         )
+        
+        print(f"Data size: {self.df.shape}")
+        print(f"Number of Records: {len(self.df):,}")
+        
+        return self.df
+    
+    def clean_data(self):
+        """
+        Clean the dataset by removing invalid records and focusing or UK customers.add()
+        
+        Returns:
+            pd.DataFrame: Cleaned UK dataset
+        """
+        # Add TotalPrice column
+        self.df["TotalPrice"] = self.df["Quantity"] * self.df["UnitPrice"]
+        # Remove cancelled invoices (starting with 'C')
+        self.df = self.df[~self.df["InvoiceNo"].astype(str).str.startswith("C")]
+        # Focus on UK customers
+        self.df_uk = self.df[self.df["Country"] == "United Kingdom"].copy()
+        
+        # Remove invalid quantiy or unit price
+        self.df_uk = self.df_uk[
+            (self.df_uk["Quantity"] > 0) & (self.df_uk["UnitPrice"] > 0)
+        ]
+        
+        return self.df_uk
+    
+    def create_time_features(self):
+        """
+        Create time-based features for analysis.
+        """
+        self.df_uk["DayOfWeek"] = self.df_uk["InvoiceDate"].dt.dayofweek
+        self.df_uk["HourOfDay"] = self.df_uk["InvoiceDate"].dt.hour
+        
+    def calculate_rfm(self):
+        """
+        Calculate RFM (Recency, Frequency, Monetary) metrics.
+        
+        Returns:
+            pd.DataFrameL: RFM data for each customer
+        """
+        snapshot_date = self.df_uk["InvoiceDate"].max() + pd.Timedelta(days=1)
+        
+        self.rfm_data = self.df_uk.groupby("CustomerID").agg(
+            {
+                "InvoiceDate": lambda x: (snapshot_date - x.max()).days, # Recency
+                "InvoiceNo": lambda x: len(x.unique()), # Frequency
+                "TotalPrice": lambda x: x.sum(), # Monetary       
+            }
+        )
+        
+        self.rfm_data.columns = ["Recency", "Frequency", "Monetary"]
+        return self.rfm_data
+    
+    def save_cleaned_data(self, output_dir="../data/processed"):
+        """
+        Save cleaned data to specified directory.
+        
+        Args:
+            output_dir (str): Output directory path
+        """
+        os.makedirs(output_dir, exist_ok=True)
+        self.df_uk.to_csv(f"{output_dir}/cleaned_uk_data.csv", index=False)
+        print(f"Cleaned data saved to {output_dir}/cleaned_uk_data.csv")
 
 
 class FeatureEngineer:
@@ -150,5 +217,57 @@ class DataVisualizer():
         sns.barplot(x=top_revenue_products.values, y=top_revenue_products.index)
         plt.title(f"Top {top_n} by sales volume")
         plt.xlabel("Revenue (BGP)")
+        plt.tight_layout()
+        plt.show()
+        
+    def plot_customer_distribution(self, df):
+        """
+        Plot customer behavior distributions.
+        
+        Args:
+            df (pd.DataFrame): Transaction dataframe
+        """
+        plt.figure(figsize=(10, 5))
+        transactions_per_customer = df.groupby("CustomerID")["InvoiceNo"].nunique()
+        sns.histplot(transactions_per_customer, bins=30, kde=True)
+        plt.title("Distribution of Transactions per Customer")
+        plt.xlabel("Number of transactions")
+        plt.ylabel("Number of Customers")
+        plt.tight_layout()
+        plt.show()
+        
+        plt.figure(figsize=(10, 5))
+        spend_per_customer = df.groupby("CustomerID")["TotalPrice"].sum()
+        spend_filter = spend_per_customer < spend_per_customer.quantile(0.99)
+        sns.histplot(spend_per_customer[spend_filter], bins=30, kde=True)
+        plt.title("Distribution of Spend per Customer")
+        plt.xlabel("Total Spend (GBP)")
+        plt.ylabel("Number of Customers")
+        plt.tight_layout()
+        plt.show()
+        
+    def plot_rfm_analysis(self, rfm_data):
+        """
+        Plot RFM score distributions.
+        
+        Args:
+            rfm_data (pd.DataFrame): DataFrame with RFM scores
+        """
+        fig, axes = plt.subplots(3, 1, figsize=(12, 10))
+        
+        sns.histplot(rfm_data["Recency"], bins=30, kde=True, ax=axes[0])
+        axes[0].set_title("Recency Distribution")
+        axes[0].set_xlabel("Recency (days)")
+        
+        sns.histplot(rfm_data["Frequency"], bins=30, kde=True, ax=axes[1])
+        axes[1].set_title("Frequency Distribution")
+        axes[1].set_xlabel("Frequency (number of purchases)")
+        
+        monetary_filter = rfm_data["Monetary"] < rfm_data["Monetary"].quantile(0.99)
+        sns.histplot(
+            rfm_data["Monetary"][monetary_filter], bins=30, kde=True, ax=axes[2]
+        )
+        axes[2].set_title("Monetary Distribution")
+        axes[2].set_xlabel("Monetary (GBP)")
         plt.tight_layout()
         plt.show()
