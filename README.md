@@ -40,7 +40,3 @@ pip install -r requirements.txt
 - DataCleaner: loads raw CSV, removes cancellations/negatives, keeps UK, adds TotalPrice, computes RFM, and writes cleaned_uk_data.csv.
 - FeatureEngineer: builds 16 customer-level features, Box-Cox transforms, scales, and writes feature CSVs.
 - ClusterAnalyzer: PCA, k search, K-Means, plots (2D/3D, radar), surrogate RandomForest, and SHAP summaries.
-
-## Notes
-- SHAP and RandomForest steps can be compute-intensive; consider sampling for quick iterations.
-- Figures save inline in notebooks; ensure a graphical backend is available when running locally.
